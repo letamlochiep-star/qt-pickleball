@@ -623,11 +623,30 @@ let syncAuthUser = null;
 let syncLastPushAt = 0;
 let syncPushTimer = null;
 
+let syncErrorDetail = '';
+
+function showKvGuide(){
+  alert('HƯỚNG DẪN KẾT NỐI VERCEL KV ĐỂ ĐỒNG BỘ CHO VĐV XEM:\n\n'
+    + '1. Truy cập: https://vercel.com/dashboard -> Chọn project qt-pickleball\n'
+    + '2. Vào tab "Storage" ở trên cùng -> Bấm "Create Database" -> Chọn "KV"\n'
+    + '3. Đặt tên (vd: pkl-qt-2026-kv) -> Bấm "Create"\n'
+    + '4. Bấm nút "Connect Project" -> Chọn project qt-pickleball\n'
+    + '5. Vào tab "Deployments" -> Bấm dấu 3 chấm (...) ở bản deploy mới nhất -> Chọn "Redeploy"\n\n'
+    + 'Sau khi Redeploy xong, quay lại đây bấm "☁ Đồng bộ lên máy chủ" để đẩy kết quả Bảng A lên cho toàn bộ VĐV xem!');
+}
+
 async function syncDetect(){
   try {
     const res = await fetch(SYNC_API, { method:'GET', cache:'no-store' });
-    if(!res.ok) throw new Error('status '+res.status);
+    if(!res.ok){
+      let errText = await res.text();
+      if(errText.includes('Missing required environment variables') || errText.includes('KV_REST_API')){
+        syncErrorDetail = 'missing_kv';
+      }
+      throw new Error(errText);
+    }
     syncEnabled = true;
+    syncErrorDetail = '';
     const data = await res.json();
     if(data && data.version > 0 && data.state){
       store = Object.assign(fresh(), data.state);
@@ -724,13 +743,18 @@ async function forceSyncPush(){
       const data = await res.json();
       syncVersion = data.version;
       syncEnabled = true;
+      syncErrorDetail = '';
       alert(`Đồng bộ thành công lên máy chủ (phiên bản v${syncVersion})! Toàn bộ người xem và vận động viên sẽ nhận dữ liệu mới trong vài giây.`);
       render();
-    } else if(res.status === 401){
-      alert('Lỗi 401: Mật khẩu xác thực không khớp trên Vercel.');
     } else {
       let err = await res.text();
-      alert('Lỗi đồng bộ: ' + err);
+      if(err.includes('Missing required environment variables') || err.includes('KV_REST_API')){
+        showKvGuide();
+      } else if(res.status === 401){
+        alert('Lỗi 401: Mật khẩu xác thực không khớp trên Vercel.');
+      } else {
+        alert('Lỗi đồng bộ: ' + err);
+      }
     }
   } catch(e){
     alert('Không thể kết nối đến máy chủ: ' + e.message);
@@ -1302,9 +1326,14 @@ function tab(t,label){
 }
 
 function authBar(){
-  let syncBadge = syncEnabled
-    ? `<span class="badge ok" style="cursor:pointer" onclick="syncPull()" title="Đã kết nối backend Vercel KV. Bấm để làm mới ngay">☁ Trực tiếp v${syncVersion}</span>`
-    : `<span class="badge" style="cursor:pointer" onclick="syncDetect()" title="Chạy offline (localStorage). Bấm để thử kết nối lại">◌ Offline</span>`;
+  let syncBadge = '';
+  if(syncEnabled){
+    syncBadge = `<span class="badge ok" style="cursor:pointer" onclick="syncPull()" title="Đã kết nối backend Vercel KV. Bấm để làm mới ngay">☁ Trực tiếp v${syncVersion}</span>`;
+  } else if(syncErrorDetail === 'missing_kv'){
+    syncBadge = `<span class="badge" style="background:#ffefe4;color:#b24020;cursor:pointer;border:1px solid #f1b39c" onclick="showKvGuide()" title="Chưa kết nối Vercel KV trên Vercel Dashboard. Bấm xem hướng dẫn">⚠ Chưa nối Vercel KV</span>`;
+  } else {
+    syncBadge = `<span class="badge" style="cursor:pointer" onclick="syncDetect()" title="Chạy offline (localStorage). Bấm để thử kết nối lại">◌ Offline</span>`;
+  }
   if(currentUser){
     let badge=currentUser.role==='admin'?'<span class="badge">ADMIN</span>':'<span class="badge ok">TRỌNG TÀI</span>';
     return `${syncBadge} <span class="auth-chip">👤 ${esc(currentUser.name)} ${badge} <button class="auth-logout" onclick="logout()">Đăng xuất</button></span>`;
