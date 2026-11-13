@@ -1185,14 +1185,44 @@ function overviewHTML(c){
     </div>
   </section>
   <section class="panel">
-    <h3>Tiến trình tổ chức</h3>
-    <div class="steps">
-      <div class="step"><b>01 · Bốc thăm</b>Mã bảng đã có sẵn trong danh sách. Admin có thể chỉnh nếu BTC có thay đổi.</div>
-      <div class="step"><b>02 · Thi đấu bảng</b>Vòng tròn một lượt. Hệ thống tính thắng, hiệu số, hạng ba.</div>
-      <div class="step"><b>03 · Chốt hạng ba (trình 6-7)</b>Admin dùng 2 dropdown ở tab "Bảng đấu / Xếp hạng" để chốt 2 suất hạng ba vào nhánh công bố.</div>
-      <div class="step"><b>04 · Nhánh tự động</b>1/8 → tứ kết → bán kết → chung kết.</div>
-      <div class="step"><b>05 · Trao giải</b>Mỗi trình: 1 Vô địch, 1 Nhì, 2 Đồng ba.</div>
-      <div class="step"><b>06 · Sao lưu</b>Admin bấm "Xuất bản sao JSON" ít nhất 1 lần/vòng.</div>
+    <div style="line-height:1.75;font-size:13.5px">
+      <div style="margin-bottom:20px">
+        <h3 style="font-size:16px;color:var(--navy);margin:0 0 8px">1. Thời gian tổ chức</h3>
+        <p style="margin:4px 0">Thời gian khai mạc: <b>07 giờ 00 phút</b>, Chủ nhật, ngày 15 tháng 11 năm 2026.</p>
+        <p style="margin:4px 0">Thời gian bắt đầu thi đấu: <b>07 giờ 30 phút</b> cùng ngày.</p>
+        <p style="margin:4px 0">Các trận đấu được tổ chức theo lịch và thứ tự do Ban tổ chức công bố.</p>
+      </div>
+
+      <div style="margin-bottom:20px">
+        <h3 style="font-size:16px;color:var(--navy);margin:0 0 8px">2. Địa điểm và phân công sân thi đấu</h3>
+        <p style="margin:4px 0 10px"><b>Địa điểm:</b> Sân Pickleball Đà Lạt Sport, số 54, Khu quy hoạch Phạm Hồng Thái, Đà Lạt.</p>
+        <p style="margin:4px 0 8px">Ban tổ chức phân công sân thi đấu cụ thể như sau:</p>
+        <table class="tbl" style="max-width:520px;margin:8px 0 10px;border:1px solid var(--line);border-radius:8px;overflow:hidden">
+          <thead>
+            <tr>
+              <th style="width:50%">Sân thi đấu</th>
+              <th style="width:50%">Nhóm thi đấu</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><b>Sân số 1 và sân số 2</b></td>
+              <td><span class="pill" style="background:#e8f4fb;color:#1a5364;font-size:12px">Trình khối 8–9</span></td>
+            </tr>
+            <tr>
+              <td><b>Sân số 3 và sân số 4</b></td>
+              <td><span class="pill" style="background:#e3f2f1;color:#087c89;font-size:12px">Trình khối 6–7</span></td>
+            </tr>
+          </tbody>
+        </table>
+        <p style="margin:6px 0 0;color:var(--muted);font-style:italic">Các trận đấu được bố trí phù hợp và phân bổ tương đối đồng đều giữa hai sân của mỗi trình, bảo đảm thuận tiện trong công tác điều hành và tổ chức thi đấu.</p>
+      </div>
+
+      <div>
+        <h3 style="font-size:16px;color:var(--navy);margin:0 0 8px">3. Yêu cầu đối với vận động viên</h3>
+        <p style="margin:4px 0">Đề nghị tất cả vận động viên có mặt đúng <b>07 giờ 00 phút</b> để tham dự lễ khai mạc, thực hiện điểm danh và nghe phổ biến lịch thi đấu, các quy định về an toàn.</p>
+        <p style="margin:4px 0">Các lớp và vận động viên nghiêm túc chấp hành thời gian, sự phân công của Ban tổ chức và hướng dẫn của trọng tài, góp phần bảo đảm giải đấu diễn ra an toàn, công bằng, nghiêm túc và đúng tiến độ.</p>
+      </div>
     </div>
   </section>
   ${c.errors.length?`<section class="panel"><h3>Việc cần bổ sung (${c.errors.length})</h3><div class="notice warn">${c.errors.slice(0,18).map(x=>'• '+esc(x)).join('<br>')}</div></section>`:''}`;
