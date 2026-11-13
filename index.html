@@ -611,6 +611,85 @@ const esc = x => String(x??'').replaceAll('&','&amp;').replaceAll('<','&lt;').re
 const clean = val => String(val??'').trim();
 const STORAGE_KEY = 'pklQT26_PA1_V3_20261113';
 
+
+// ─────────────────────────────────────────────
+// 0) SYNC LAYER (Vercel KV) — chỉ hoạt động khi deploy, local vẫn offline
+// ─────────────────────────────────────────────
+const SYNC_API = '/api/state';
+let syncEnabled = false;
+let syncVersion = 0;
+let syncAdminToken = null;
+let syncLastPushAt = 0;
+
+async function syncDetect(){
+  try {
+    const res = await fetch(SYNC_API, { method:'GET', cache:'no-store' });
+    if(!res.ok) throw new Error('status '+res.status);
+    syncEnabled = true;
+    const data = await res.json();
+    if(data && data.version > 0 && data.state){
+      store = Object.assign(fresh(), data.state);
+      if(!store.auth) store.auth={accounts:{},firstRunDone:false};
+      if(!store.log) store.log=[];
+      syncVersion = data.version;
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); }catch(e){}
+      console.log('[SYNC] Đã kéo dữ liệu từ server v'+syncVersion);
+    }
+  } catch(e){
+    syncEnabled = false;
+    console.log('[SYNC] Offline mode');
+  }
+}
+
+async function syncPush(){
+  if(!syncEnabled || !syncAdminToken) return;
+  const now = Date.now();
+  if(now - syncLastPushAt < 500){
+    setTimeout(()=>syncPush(), 600);
+    return;
+  }
+  syncLastPushAt = now;
+  try {
+    const res = await fetch(SYNC_API, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-admin-token':syncAdminToken},
+      body: JSON.stringify({ state: store })
+    });
+    if(res.ok){
+      const data = await res.json();
+      syncVersion = data.version;
+      console.log('[SYNC] Push OK v'+syncVersion);
+    } else if(res.status === 401){
+      console.warn('[SYNC] Sai token admin, không push được (cập nhật ADMIN_PASSWORD trên Vercel)');
+    }
+  } catch(e){ console.warn('[SYNC] Push failed:', e); }
+}
+
+async function syncPull(){
+  if(!syncEnabled) return;
+  try {
+    const res = await fetch(SYNC_API, { cache:'no-store' });
+    if(!res.ok) return;
+    const data = await res.json();
+    if(data && data.version > syncVersion && data.state){
+      store = Object.assign(fresh(), data.state);
+      if(!store.auth) store.auth={accounts:{},firstRunDone:false};
+      if(!store.log) store.log=[];
+      syncVersion = data.version;
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); }catch(e){}
+      render();
+      console.log('[SYNC] Pull v'+syncVersion);
+    }
+  } catch(e){ console.warn('[SYNC] Pull failed:', e); }
+}
+
+function syncStartPolling(){
+  if(!syncEnabled) return;
+  setInterval(()=>{
+    if(document.visibilityState === 'visible') syncPull();
+  }, 5000);
+}
+
 function fresh() {
   return {
     PA1: {
@@ -683,6 +762,8 @@ function save() {
     }
   }
   catch(e) { alert('Không lưu được bộ nhớ trình duyệt. Hãy xuất bản sao JSON!'); }
+  // Push lên Vercel KV nếu admin đã đăng nhập và sync bật
+  if (syncEnabled && syncAdminToken) syncPush();
 }
 function download(name, content, type) {
   let b=new Blob([content],{type:type||'application/octet-stream'}),u=URL.createObjectURL(b),a=document.createElement('a');
@@ -724,6 +805,8 @@ async function tryLogin(username, password){
   if(h!==acc.hash) return {ok:false, err:'Sai mật khẩu'};
   acc.lastLogin=Date.now();
   currentUser={username, name:acc.name, role:acc.role};
+  // Lưu token sync nếu là admin (plain password chỉ trong RAM, dùng cho header Vercel KV)
+  if(acc.role==='admin') syncAdminToken = password;
   logAction('login','');
   save();
   return {ok:true};
@@ -732,6 +815,7 @@ async function tryLogin(username, password){
 function logout(){
   if(currentUser) logAction('logout','');
   currentUser=null;
+  syncAdminToken=null;
   modalState=null;
   render();
 }
@@ -1144,14 +1228,17 @@ function tab(t,label){
 }
 
 function authBar(){
+  let syncBadge = syncEnabled
+    ? `<span class="badge ok" title="Đã kết nối backend Vercel KV">☁ Live v${syncVersion}</span>`
+    : `<span class="badge" title="Chạy offline (localStorage)">◌ Offline</span>`;
   if(currentUser){
     let badge=currentUser.role==='admin'?'<span class="badge">ADMIN</span>':'<span class="badge ok">TRỌNG TÀI</span>';
-    return `<span class="auth-chip">👤 ${esc(currentUser.name)} ${badge} <button class="auth-logout" onclick="logout()">Đăng xuất</button></span>`;
+    return `${syncBadge} <span class="auth-chip">👤 ${esc(currentUser.name)} ${badge} <button class="auth-logout" onclick="logout()">Đăng xuất</button></span>`;
   }
   let btns='';
   if(isAdminUrl()) btns+=`<button class="login-btn" onclick="openLogin('admin')">Đăng nhập quản trị</button>`;
   btns+=`<button class="login-btn ref" onclick="openLogin('referee')">Đăng nhập trọng tài</button>`;
-  return `<span class="auth-chip anon">👁 Chế độ xem</span> ${btns}`;
+  return `${syncBadge} <span class="auth-chip anon">👁 Chế độ xem</span> ${btns}`;
 }
 
 function render(){
@@ -2150,6 +2237,8 @@ async function importFile(ev){
 // ─────────────────────────────────────────────
 (async function boot(){
   await initAuth();
+  await syncDetect();      // phát hiện backend Vercel KV, kéo state ban đầu nếu có
+  await initAuth();        // đảm bảo admin mặc định tồn tại kể cả sau pull từ server rỗng
   byId('restoreFile').onchange=async e=>{
     let f=e.target.files[0]; if(!f) return;
     try{ restore(await f.text()); } catch(err){ alert(err.message); }
@@ -2157,5 +2246,6 @@ async function importFile(ev){
   };
   window.addEventListener('hashchange', ()=>render());
   render();
+  syncStartPolling();      // viewer tự pull mỗi 5s
 })();
 </script></body></html>

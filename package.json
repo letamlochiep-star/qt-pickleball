@@ -1,0 +1,9 @@
+{
+  "name": "pickleball-qt-2026",
+  "version": "3.3.0",
+  "private": true,
+  "description": "Điều hành giải Pickleball THCS Quang Trung 2026 — sync qua Vercel KV",
+  "dependencies": {
+    "@vercel/kv": "^3.0.0"
+  }
+}
