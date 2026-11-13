@@ -81,7 +81,7 @@
 @media(max-width:650px){.doc-box{padding:18px 16px}.doc-header{flex-direction:column;align-items:center;text-align:center}}
 </style></head><body>
 <header class="top"><div class="brand"><div class="logo">🏓</div><div><h1>Điều hành Pickleball v3.1 · PA1 · THCS Quang Trung</h1><small>Chào mừng Ngày Nhà giáo Việt Nam · 15/11/2026 · Đà Lạt Sport</small></div></div><span class="tag" id="authBar"></span></header>
-<div class="wrap"><div class="toolbar"><b>THỂ THỨC: PA1 · 90 TRẬN · 15 BẢNG · LUẬT TRƯỜNG (chạm 11)</b><div class="spacer"></div><button class="btn" id="btnBackup">Xuất bản sao JSON</button><button class="btn" id="btnRestore">Nạp bản sao</button><input type="file" accept=".json" id="restoreFile" hidden><button class="btn" onclick="window.print()">In trang</button></div>
+<div class="wrap"><div class="toolbar"><b>THỂ THỨC: PA1 · 90 TRẬN · 15 BẢNG · LUẬT TRƯỜNG (chạm 11)</b><div class="spacer"></div><span id="toolbarTools"></span><input type="file" accept=".json" id="restoreFile" hidden></div>
 <div class="grid" id="metrics"></div><div class="notice" id="status"></div><div class="columns"><nav class="side" id="menu"></nav><main class="content" id="page"></main></div><footer class="footer">Ứng dụng HTML chạy trên máy BTC · Dữ liệu tự lưu tại trình duyệt hiện tại · Nên sao lưu JSON sau mỗi vòng.</footer></div>
 <div id="modalRoot"></div>
 <script>/*! JSZip v3.10.1 (c) 2009-2016 Stuart Knightley, MIT or GPLv3 */
@@ -1138,10 +1138,26 @@ function render(){
   // Auth bar in header
   byId('authBar').innerHTML=authBar();
 
-  // Menu (Quản trị tab chỉ hiện với admin)
-  let menu=tab('overview','◈ Tổng quan')+tab('import','⇧ Nạp dữ liệu Excel')+tab('teams','☷ Danh sách và bốc thăm')+tab('groups','▦ Bảng đấu / Xếp hạng')+tab('matches','⚑ Nhập tỉ số trận đấu')+tab('bracket','◇ Nhánh loại trực tiếp')+tab('awards','★ Kết quả và giải thưởng')+tab('rules','📜 Điều lệ giải');
+  // Toolbar buttons: chỉ xuất hiện ở chế độ quản trị hoặc trọng tài
+  if(byId('toolbarTools')){
+    if(canEditScore()){
+      let tb = `<button class="btn" onclick="backup()">Xuất bản sao JSON</button>`;
+      if(isAdmin()) tb += `<button class="btn" onclick="byId('restoreFile').click()">Nạp bản sao</button>`;
+      tb += `<button class="btn" onclick="window.print()">In trang</button>`;
+      byId('toolbarTools').innerHTML = tb;
+    } else {
+      byId('toolbarTools').innerHTML = '';
+    }
+  }
+
+  // Menu: Nạp Excel chỉ hiện với Admin/Trọng tài
+  let menu = tab('overview','◈ Tổng quan');
+  if(canEditScore()) menu += tab('import','⇧ Nạp dữ liệu Excel');
+  menu += tab('teams','☷ Danh sách và bốc thăm')+tab('groups','▦ Bảng đấu / Xếp hạng')+tab('matches','⚑ Nhập tỉ số trận đấu')+tab('bracket','◇ Nhánh loại trực tiếp')+tab('awards','★ Kết quả và giải thưởng')+tab('rules','📜 Điều lệ giải');
   if(isAdmin() && isAdminUrl()) menu += tab('admin','🔐 Quản trị');
-  byId('menu').innerHTML=menu;
+  byId('menu').innerHTML = menu;
+
+  if(screen==='import' && !canEditScore()) screen='overview';
 
   // Content
   let html='';
@@ -1178,10 +1194,10 @@ function overviewHTML(c){
         <small>51 trận dự kiến</small></div>
     </div>
     <div class="actions">
-      <button class="btn primary" onclick="screen='matches';render()">Nhập điểm thi đấu</button>
+      <button class="btn primary" onclick="screen='matches';render()">${canEditScore()?'Nhập điểm thi đấu':'Xem lịch & tỉ số'}</button>
       <button class="btn" onclick="screen='groups';render()">Xem bảng & xếp hạng</button>
-      <button class="btn" onclick="exportResults()">Xuất kết quả CSV</button>
-      <button class="btn" onclick="cleanScores()">Rà soát kết quả cũ</button>
+      ${canEditScore() ? `<button class="btn" onclick="exportResults()">Xuất kết quả CSV</button>` : ''}
+      ${isAdmin() ? `<button class="btn" onclick="cleanScores()">Rà soát kết quả cũ</button>` : ''}
     </div>
   </section>
   <section class="panel">
@@ -1258,7 +1274,7 @@ function teamsHTML(c){
   let editable=isAdmin();
   return `<section class="panel">
     <div class="flexline"><h2>Danh sách 50 cặp – Đã chia bảng PA1</h2>
-      <div><button class="btn" onclick="exportTemplateCSV()">Xuất CSV</button></div>
+      ${canEditScore() ? `<div><button class="btn" onclick="exportTemplateCSV()">Xuất CSV</button></div>` : ''}
     </div>
     <p class="help">${editable?'<b>Chế độ admin</b>: Bấm vào ô để sửa trực tiếp. Đổi tên/lớp lưu ngay. Đổi bảng xoá toàn bộ điểm. Đổi mã cặp cần xác nhận "DONGY".':'Chỉ xem. Đăng nhập admin (URL kèm <code>#admin</code>) để sửa.'}</p>
     <div class="tablewrap"><table class="tbl">
@@ -1658,7 +1674,7 @@ function awardsHTML(c){
   return `<section class="panel"><h2>Bảng vàng và giải thưởng</h2>
     <p class="muted">Mỗi trình: 1 Vô địch, 1 Giải Nhì, 2 Đồng giải Ba.</p>
     <div class="two">${parts.join('')}</div>
-    <div class="actions"><button class="btn primary" onclick="exportResults()">Xuất CSV kết quả</button><button class="btn" onclick="window.print()">In trang kết quả</button></div>
+    ${canEditScore() ? `<div class="actions"><button class="btn primary" onclick="exportResults()">Xuất CSV kết quả</button><button class="btn" onclick="window.print()">In trang kết quả</button></div>` : ''}
   </section>`;
 }
 
@@ -2095,8 +2111,6 @@ async function importFile(ev){
 // ─────────────────────────────────────────────
 (async function boot(){
   await initAuth();
-  byId('btnBackup').onclick=backup;
-  byId('btnRestore').onclick=()=>byId('restoreFile').click();
   byId('restoreFile').onchange=async e=>{
     let f=e.target.files[0]; if(!f) return;
     try{ restore(await f.text()); } catch(err){ alert(err.message); }
