@@ -1,52 +1,57 @@
-import { kv } from '@vercel/kv';
+// api/state.js — Vercel serverless endpoint để đồng bộ dữ liệu giải Pickleball
+// GET  /api/state           → trả về {state, version} (công khai)
+// POST /api/state           → ghi state mới, cần header x-admin-token khớp env ADMIN_PASSWORD
+
+const { kv } = require('@vercel/kv');
 
 const STATE_KEY = 'pkl-qt-2026-state';
 const VERSION_KEY = 'pkl-qt-2026-version';
 
-export default async function handler(req, res) {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+module.exports = async function handler(req, res) {
+  // CORS cho phép mở từ bất kỳ domain nào xem (không bắt buộc)
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-admin-token');
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
-  if (req.method === 'GET') {
-    try {
-      const [version, state] = await Promise.all([
-        kv.get(VERSION_KEY),
-        kv.get(STATE_KEY)
+  try {
+    if (req.method === 'GET') {
+      const [state, version] = await Promise.all([
+        kv.get(STATE_KEY),
+        kv.get(VERSION_KEY)
       ]);
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
       return res.status(200).json({
-        version: typeof version === 'number' ? version : (parseInt(version, 10) || 0),
-        state: state || null
+        state: state || null,
+        version: Number(version) || 0
       });
-    } catch (error) {
-      console.error('Error fetching state from KV:', error);
-      return res.status(500).json({ error: 'Internal Server Error', details: error.message });
-    }
-  }
-
-  if (req.method === 'POST') {
-    const adminPassword = process.env.ADMIN_PASSWORD;
-    const clientToken = req.headers['x-admin-token'];
-
-    if (!adminPassword || clientToken !== adminPassword) {
-      return res.status(401).json({ error: 'Unauthorized: invalid or missing admin token' });
     }
 
-    try {
-      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const { state } = body || {};
-
-      if (!state) {
-        return res.status(400).json({ error: 'Missing state in request body' });
+    if (req.method === 'POST') {
+      const token = req.headers['x-admin-token'];
+      const expected = process.env.ADMIN_PASSWORD;
+      if (!expected) {
+        return res.status(500).json({ error: 'ADMIN_PASSWORD chưa cấu hình trên Vercel' });
       }
-
-      await kv.set(STATE_KEY, state);
-      const newVersion = await kv.incr(VERSION_KEY);
-
+      if (!token || token !== expected) {
+        return res.status(401).json({ error: 'unauthorized: sai x-admin-token' });
+      }
+      const body = req.body;
+      if (!body || typeof body.state !== 'object') {
+        return res.status(400).json({ error: 'body thiếu state' });
+      }
+      const current = Number(await kv.get(VERSION_KEY)) || 0;
+      const newVersion = current + 1;
+      await Promise.all([
+        kv.set(STATE_KEY, body.state),
+        kv.set(VERSION_KEY, newVersion)
+      ]);
       return res.status(200).json({ ok: true, version: newVersion });
-    } catch (error) {
-      console.error('Error saving state to KV:', error);
-      return res.status(500).json({ error: 'Internal Server Error', details: error.message });
     }
-  }
 
-  return res.status(405).json({ error: 'Method Not Allowed' });
-}
+    return res.status(405).json({ error: 'method not allowed' });
+  } catch (err) {
+    console.error('[state.js]', err);
+    return res.status(500).json({ error: err.message });
+  }
+};
