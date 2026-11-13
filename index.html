@@ -618,7 +618,8 @@ const STORAGE_KEY = 'pklQT26_PA1_V3_20261113';
 const SYNC_API = '/api/state';
 let syncEnabled = false;
 let syncVersion = 0;
-let syncAdminToken = null;
+let syncAuthToken = null;
+let syncAuthUser = null;
 let syncLastPushAt = 0;
 let syncPushTimer = null;
 
@@ -647,7 +648,7 @@ async function syncDetect(){
 }
 
 async function syncPush(){
-  if(!syncAdminToken) return;
+  if(!syncAuthToken) return;
   const now = Date.now();
   if(now - syncLastPushAt < 400){
     if(syncPushTimer) clearTimeout(syncPushTimer);
@@ -658,7 +659,12 @@ async function syncPush(){
   try {
     const res = await fetch(SYNC_API, {
       method:'POST',
-      headers:{'Content-Type':'application/json','x-admin-token':syncAdminToken},
+      headers:{
+        'Content-Type':'application/json',
+        'x-admin-token': syncAuthToken,
+        'x-auth-user': syncAuthUser || '',
+        'x-auth-role': currentUser?.role || ''
+      },
       body: JSON.stringify({ state: store })
     });
     if(res.ok){
@@ -668,7 +674,7 @@ async function syncPush(){
       console.log('[SYNC] Push OK v'+syncVersion);
       renderAuthBarOnly();
     } else if(res.status === 401){
-      console.warn('[SYNC] Sai token admin, không push được (cập nhật ADMIN_PASSWORD trên Vercel)');
+      console.warn('[SYNC] Sai token xác thực, không push được');
     }
   } catch(e){ console.warn('[SYNC] Push failed:', e); }
 }
@@ -697,25 +703,31 @@ async function syncPull(){
 }
 
 async function forceSyncPush(){
-  if(!syncAdminToken){
-    let pw = prompt('Nhập mật khẩu admin để đồng bộ lên máy chủ:');
+  if(!syncAuthToken){
+    let pw = prompt('Nhập mật khẩu admin hoặc trọng tài để đồng bộ lên máy chủ:');
     if(!pw) return;
-    syncAdminToken = pw;
+    syncAuthToken = pw;
+    syncAuthUser = currentUser?.username || 'letam';
   }
   try {
     const res = await fetch(SYNC_API, {
       method:'POST',
-      headers:{'Content-Type':'application/json','x-admin-token':syncAdminToken},
+      headers:{
+        'Content-Type':'application/json',
+        'x-admin-token': syncAuthToken,
+        'x-auth-user': syncAuthUser || '',
+        'x-auth-role': currentUser?.role || ''
+      },
       body: JSON.stringify({ state: store })
     });
     if(res.ok){
       const data = await res.json();
       syncVersion = data.version;
       syncEnabled = true;
-      alert(`Đồng bộ thành công lên máy chủ (phiên bản v${syncVersion})! Toàn bộ người xem sẽ nhận dữ liệu mới trong 5 giây.`);
+      alert(`Đồng bộ thành công lên máy chủ (phiên bản v${syncVersion})! Toàn bộ người xem và vận động viên sẽ nhận dữ liệu mới trong vài giây.`);
       render();
     } else if(res.status === 401){
-      alert('Lỗi 401: Mật khẩu admin không khớp với biến ADMIN_PASSWORD trên Vercel.');
+      alert('Lỗi 401: Mật khẩu xác thực không khớp trên Vercel.');
     } else {
       let err = await res.text();
       alert('Lỗi đồng bộ: ' + err);
@@ -733,7 +745,7 @@ function renderAuthBarOnly(){
 function syncStartPolling(){
   setInterval(()=>{
     if(document.visibilityState === 'visible') syncPull();
-  }, 5000);
+  }, 3000);
 }
 
 function fresh() {
@@ -777,7 +789,8 @@ try {
   let sess = JSON.parse(sessionStorage.getItem('pkl_session'));
   if (sess && sess.user) {
     currentUser = sess.user;
-    syncAdminToken = sess.token || null;
+    syncAuthToken = sess.token || null;
+    syncAuthUser = sess.username || sess.user.username || null;
   }
 } catch(e) {}
 
@@ -817,8 +830,8 @@ function save() {
     }
   }
   catch(e) { alert('Không lưu được bộ nhớ trình duyệt. Hãy xuất bản sao JSON!'); }
-  // Push lên Vercel KV nếu admin đã đăng nhập và sync bật
-  if (syncAdminToken) syncPush();
+  // Push lên Vercel KV nếu admin HOẶC trọng tài đã đăng nhập
+  if (syncAuthToken) syncPush();
 }
 function download(name, content, type) {
   let b=new Blob([content],{type:type||'application/octet-stream'}),u=URL.createObjectURL(b),a=document.createElement('a');
@@ -860,9 +873,12 @@ async function tryLogin(username, password){
   if(h!==acc.hash) return {ok:false, err:'Sai mật khẩu'};
   acc.lastLogin=Date.now();
   currentUser={username, name:acc.name, role:acc.role};
-  // Lưu token sync nếu là admin
-  if(acc.role==='admin') syncAdminToken = password;
-  try { sessionStorage.setItem('pkl_session', JSON.stringify({ user: currentUser, token: syncAdminToken })); } catch(e) {}
+  // Lưu token sync cho cả Admin và Trọng tài
+  syncAuthToken = password;
+  syncAuthUser = username;
+  try {
+    sessionStorage.setItem('pkl_session', JSON.stringify({ user: currentUser, token: syncAuthToken, username: syncAuthUser }));
+  } catch(e) {}
   logAction('login','');
   save();
   return {ok:true};
@@ -871,7 +887,8 @@ async function tryLogin(username, password){
 function logout(){
   if(currentUser) logAction('logout','');
   currentUser=null;
-  syncAdminToken=null;
+  syncAuthToken=null;
+  syncAuthUser=null;
   modalState=null;
   try { sessionStorage.removeItem('pkl_session'); } catch(e) {}
   render();
@@ -1286,7 +1303,7 @@ function tab(t,label){
 
 function authBar(){
   let syncBadge = syncEnabled
-    ? `<span class="badge ok" style="cursor:pointer" onclick="syncPull()" title="Đã kết nối backend Vercel KV. Bấm để làm mới ngay">☁ Live v${syncVersion}</span>`
+    ? `<span class="badge ok" style="cursor:pointer" onclick="syncPull()" title="Đã kết nối backend Vercel KV. Bấm để làm mới ngay">☁ Trực tiếp v${syncVersion}</span>`
     : `<span class="badge" style="cursor:pointer" onclick="syncDetect()" title="Chạy offline (localStorage). Bấm để thử kết nối lại">◌ Offline</span>`;
   if(currentUser){
     let badge=currentUser.role==='admin'?'<span class="badge">ADMIN</span>':'<span class="badge ok">TRỌNG TÀI</span>';
@@ -1295,7 +1312,7 @@ function authBar(){
   let btns='';
   if(isAdminUrl()) btns+=`<button class="login-btn" onclick="openLogin('admin')">Đăng nhập quản trị</button>`;
   btns+=`<button class="login-btn ref" onclick="openLogin('referee')">Đăng nhập trọng tài</button>`;
-  return `${syncBadge} <span class="auth-chip anon">👁 Chế độ xem</span> ${btns}`;
+  return `${syncBadge} <span class="auth-chip anon">👁 Chế độ xem (VĐV & Khán giả)</span> ${btns}`;
 }
 
 function render(){
@@ -1325,7 +1342,7 @@ function render(){
     if(canEditScore()){
       let tb = `<button class="btn" onclick="backup()">Xuất bản sao JSON</button>`;
       if(isAdmin()) tb += `<button class="btn" onclick="byId('restoreFile').click()">Nạp bản sao</button>`;
-      if(isAdmin()) tb += `<button class="btn primary" onclick="forceSyncPush()" title="Đẩy toàn bộ dữ liệu lên máy chủ Vercel KV ngay lập tức">☁ Đồng bộ lên máy chủ</button>`;
+      tb += `<button class="btn primary" onclick="forceSyncPush()" title="Đẩy toàn bộ dữ liệu lên máy chủ Vercel KV ngay lập tức">☁ Đồng bộ lên máy chủ</button>`;
       tb += `<button class="btn" onclick="window.print()">In trang</button>`;
       byId('toolbarTools').innerHTML = tb;
     } else {
@@ -1336,7 +1353,12 @@ function render(){
   // Menu: Nạp Excel chỉ hiện với Admin/Trọng tài
   let menu = tab('overview','◈ Tổng quan');
   if(canEditScore()) menu += tab('import','⇧ Nạp dữ liệu Excel');
-  menu += tab('teams','☷ Danh sách và bốc thăm')+tab('groups','▦ Bảng đấu / Xếp hạng')+tab('matches','⚑ Nhập tỉ số trận đấu')+tab('bracket','◇ Nhánh loại trực tiếp')+tab('awards','★ Kết quả và giải thưởng')+tab('rules','📜 Điều lệ giải');
+  menu += tab('teams','☷ Danh sách và bốc thăm')
+    + tab('groups','▦ Bảng đấu / Xếp hạng')
+    + tab('matches', canEditScore() ? '⚑ Nhập tỉ số trận đấu' : '⚑ Lịch thi đấu & Tỉ số')
+    + tab('bracket','◇ Nhánh loại trực tiếp')
+    + tab('awards','★ Kết quả và giải thưởng')
+    + tab('rules','📜 Điều lệ giải');
   if(isAdmin() && isAdminUrl()) menu += tab('admin','🔐 Quản trị');
   byId('menu').innerHTML = menu;
 
@@ -1810,13 +1832,13 @@ function setManual(g,b){
 // ─── Matches ───
 function matchesHTML(c){
   return `<section class="panel">
-    <div class="flexline"><h2>Nhập điểm thi đấu – ${LABELS[mode]}</h2>
+    <div class="flexline"><h2>${canEditScore() ? 'Nhập điểm thi đấu' : 'Lịch thi đấu & Tỉ số trực tiếp'} – ${LABELS[mode]}</h2>
       <select class="smallinput" onchange="selectFocusGroup(this.value)">
         <option value="67" ${focusGroup==='67'?'selected':''}>Trình 6–7</option>
         <option value="89" ${focusGroup==='89'?'selected':''}>Trình 8–9</option>
       </select></div>
     <div class="rounds">${[['all','Tất cả'],['Vòng bảng','Vòng bảng'],['Vòng 1/8','1/8'],['Tứ kết','Tứ kết'],['Bán kết','Bán kết'],['Chung kết','Chung kết']].map(([key,label])=>`<button class="${roundFilter===key?'active':''}" onclick="roundFilter='${key}';render()">${label}</button>`).join('')}</div>
-    ${!canEditScore()?'<div class="notice">Bạn đang ở chế độ xem. Đăng nhập trọng tài để nhập điểm.</div>':''}
+    ${!canEditScore()?'<div class="notice">👁 <b>Chế độ xem cho Vận động viên & Khán giả:</b> Tỉ số và thứ hạng được cập nhật tự động theo thời gian thực mỗi khi Trọng tài chốt điểm trên sân.</div>':''}
     ${!c.ready?`<div class="notice warn">Chưa thể tạo lịch: cần hoàn tất bảng/vị trí trong danh sách và kiểm tra chỉ tiêu.</div>`:(c.matches.filter(m=>m.g===focusGroup&&(roundFilter==='all'||m.stage.includes(roundFilter)||(roundFilter==='Vòng bảng'&&m.board))).map(m=>scoreboard(m,c)).join('')||'<p class="empty">Chưa có trận ở bộ lọc này.</p>')}
   </section>`;
 }
