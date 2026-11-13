@@ -522,7 +522,7 @@ const INITIAL = [
   {
     "id": "9-01",
     "grade": 9,
-    "className": "9A5",
+    "className": "9A11",
     "p1": "Nguyễn Lê Gia Bảo",
     "p2": "Trần Lâm Trâm Anh",
     "board": "H",
@@ -634,6 +634,12 @@ try {
     store = Object.assign(fresh(), saved);
     if(!store.auth) store.auth={accounts:{},firstRunDone:false};
     if(!store.log) store.log=[];
+    // Đồng bộ cập nhật lớp 9A11 cho cặp 9-01 bảng H nếu còn lưu giá trị 9A5 cũ
+    let p901 = store.PA1?.people?.find(p => p.id === '9-01');
+    if (p901 && p901.className === '9A5') {
+      p901.className = '9A11';
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); } catch(e) {}
+    }
   }
 } catch(e) {}
 
@@ -641,9 +647,41 @@ let mode='PA1', screen='overview', focusGroup='67', roundFilter='all';
 let currentUser = null;       // {username, name, role}
 let modalState = null;        // null | {type:'login'|'addRef'|'changePw'|'confirmEdit', data}
 
+// Kênh đồng bộ thời gian thực giữa các tab/cửa sổ (BroadcastChannel + storage event)
+let syncChannel = null;
+try {
+  if (typeof BroadcastChannel !== 'undefined') {
+    syncChannel = new BroadcastChannel('pickleball_sync_channel');
+    syncChannel.onmessage = (ev) => {
+      if (ev.data?.type === 'SYNC') reloadFromStorage();
+    };
+  }
+} catch(e) {}
+
+function reloadFromStorage() {
+  try {
+    let saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (saved?.PA1?.people?.length === 50) {
+      store = Object.assign(fresh(), saved);
+      if(!store.auth) store.auth={accounts:{},firstRunDone:false};
+      if(!store.log) store.log=[];
+      render();
+    }
+  } catch(e) {}
+}
+
+window.addEventListener('storage', (e) => {
+  if (e.key === STORAGE_KEY) reloadFromStorage();
+});
+
 const data = () => store[mode];
 function save() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); }
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+    if (syncChannel) {
+      try { syncChannel.postMessage({ type: 'SYNC' }); } catch(err) {}
+    }
+  }
   catch(e) { alert('Không lưu được bộ nhớ trình duyệt. Hãy xuất bản sao JSON!'); }
 }
 function download(name, content, type) {
@@ -1291,28 +1329,28 @@ function teamsHTML(c){
           ? `<select class="mini-input" onchange="editPlayer('${esc(q.id)}','grade',Number(this.value))">${[6,7,8,9].map(g=>`<option value="${g}" ${q.grade===g?'selected':''}>${g}</option>`).join('')}</select>`
           : q.grade}</td>
         <td>${editable
-          ? `<input class="mini-input" value="${esc(q.className)}" onchange="editPlayer('${esc(q.id)}','className',this.value)" style="width:80px">`
+          ? `<input class="mini-input" value="${esc(q.className)}" oninput="editPlayer('${esc(q.id)}','className',this.value,false)" onchange="editPlayer('${esc(q.id)}','className',this.value,true)" onblur="editPlayer('${esc(q.id)}','className',this.value,true)" style="width:80px">`
           : esc(q.className)}</td>
         <td>${editable
-          ? `<input class="mini-input" value="${esc(q.p1)}" onchange="editPlayer('${esc(q.id)}','p1',this.value)">`
+          ? `<input class="mini-input" value="${esc(q.p1)}" oninput="editPlayer('${esc(q.id)}','p1',this.value,false)" onchange="editPlayer('${esc(q.id)}','p1',this.value,true)" onblur="editPlayer('${esc(q.id)}','p1',this.value,true)">`
           : esc(q.p1)}</td>
         <td>${editable
-          ? `<input class="mini-input" value="${esc(q.p2)}" onchange="editPlayer('${esc(q.id)}','p2',this.value)">`
+          ? `<input class="mini-input" value="${esc(q.p2)}" oninput="editPlayer('${esc(q.id)}','p2',this.value,false)" onchange="editPlayer('${esc(q.id)}','p2',this.value,true)" onblur="editPlayer('${esc(q.id)}','p2',this.value,true)">`
           : esc(q.p2)}</td>
         <td><select class="mini-input ${editable?'':'readonly'}" ${editable?'':'disabled'} onchange="assign('${esc(q.id)}','board',this.value)">
           <option value="">—</option>
           ${Object.keys(QUOTA[mode][groupOf(q)]).map(b=>`<option ${q.board===b?'selected':''}>${b}</option>`).join('')}
         </select></td>
         <td>${editable
-          ? `<input class="mini-input" value="${esc(q.note)}" onchange="editPlayer('${esc(q.id)}','note',this.value)">`
+          ? `<input class="mini-input" value="${esc(q.note)}" oninput="editPlayer('${esc(q.id)}','note',this.value,false)" onchange="editPlayer('${esc(q.id)}','note',this.value,true)" onblur="editPlayer('${esc(q.id)}','note',this.value,true)">`
           : `<span class="help">${esc(q.note)}</span>`}</td>
       </tr>`).join('')}</tbody>
     </table></div>
   </section>`;
 }
 
-function editPlayer(id, key, val){
-  if(!isAdmin()){ alert('Chỉ admin'); return; }
+function editPlayer(id, key, val, shouldRender = true){
+  if(!isAdmin()){ return; }
   let p=team(id); if(!p) return;
   if(key==='grade'){
     let oldG=groupOf(p), newG=val<8?'67':'89';
@@ -1323,7 +1361,8 @@ function editPlayer(id, key, val){
     p[key]=clean(val);
   }
   logAction('edit_player', `${id} · ${key}: ${JSON.stringify(val)}`, id);
-  save(); render();
+  save();
+  if(shouldRender) render();
 }
 
 function editPlayerId(oldId, newId){
