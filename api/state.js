@@ -36,7 +36,10 @@ module.exports = async function handler(req, res) {
       if (!token || token !== expected) {
         return res.status(401).json({ error: 'unauthorized: sai x-admin-token' });
       }
-      const body = req.body;
+      let body = req.body;
+      if (typeof body === 'string') {
+        try { body = JSON.parse(body); } catch(e) {}
+      }
       if (!body || typeof body.state !== 'object') {
         return res.status(400).json({ error: 'body thiếu state' });
       }

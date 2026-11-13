@@ -620,6 +620,7 @@ let syncEnabled = false;
 let syncVersion = 0;
 let syncAdminToken = null;
 let syncLastPushAt = 0;
+let syncPushTimer = null;
 
 async function syncDetect(){
   try {
@@ -631,21 +632,26 @@ async function syncDetect(){
       store = Object.assign(fresh(), data.state);
       if(!store.auth) store.auth={accounts:{},firstRunDone:false};
       if(!store.log) store.log=[];
+      let p901 = store.PA1?.people?.find(p => p.id === '9-01');
+      if (p901 && p901.className === '9A5') p901.className = '9A11';
       syncVersion = data.version;
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); }catch(e){}
       console.log('[SYNC] Đã kéo dữ liệu từ server v'+syncVersion);
     }
+    renderAuthBarOnly();
   } catch(e){
     syncEnabled = false;
     console.log('[SYNC] Offline mode');
+    renderAuthBarOnly();
   }
 }
 
 async function syncPush(){
-  if(!syncEnabled || !syncAdminToken) return;
+  if(!syncAdminToken) return;
   const now = Date.now();
-  if(now - syncLastPushAt < 500){
-    setTimeout(()=>syncPush(), 600);
+  if(now - syncLastPushAt < 400){
+    if(syncPushTimer) clearTimeout(syncPushTimer);
+    syncPushTimer = setTimeout(()=>syncPush(), 500);
     return;
   }
   syncLastPushAt = now;
@@ -658,7 +664,9 @@ async function syncPush(){
     if(res.ok){
       const data = await res.json();
       syncVersion = data.version;
+      syncEnabled = true;
       console.log('[SYNC] Push OK v'+syncVersion);
+      renderAuthBarOnly();
     } else if(res.status === 401){
       console.warn('[SYNC] Sai token admin, không push được (cập nhật ADMIN_PASSWORD trên Vercel)');
     }
@@ -666,7 +674,10 @@ async function syncPush(){
 }
 
 async function syncPull(){
-  if(!syncEnabled) return;
+  if(!syncEnabled) {
+    await syncDetect();
+    return;
+  }
   try {
     const res = await fetch(SYNC_API, { cache:'no-store' });
     if(!res.ok) return;
@@ -675,6 +686,8 @@ async function syncPull(){
       store = Object.assign(fresh(), data.state);
       if(!store.auth) store.auth={accounts:{},firstRunDone:false};
       if(!store.log) store.log=[];
+      let p901 = store.PA1?.people?.find(p => p.id === '9-01');
+      if (p901 && p901.className === '9A5') p901.className = '9A11';
       syncVersion = data.version;
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); }catch(e){}
       render();
@@ -683,8 +696,41 @@ async function syncPull(){
   } catch(e){ console.warn('[SYNC] Pull failed:', e); }
 }
 
+async function forceSyncPush(){
+  if(!syncAdminToken){
+    let pw = prompt('Nhập mật khẩu admin để đồng bộ lên máy chủ:');
+    if(!pw) return;
+    syncAdminToken = pw;
+  }
+  try {
+    const res = await fetch(SYNC_API, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-admin-token':syncAdminToken},
+      body: JSON.stringify({ state: store })
+    });
+    if(res.ok){
+      const data = await res.json();
+      syncVersion = data.version;
+      syncEnabled = true;
+      alert(`Đồng bộ thành công lên máy chủ (phiên bản v${syncVersion})! Toàn bộ người xem sẽ nhận dữ liệu mới trong 5 giây.`);
+      render();
+    } else if(res.status === 401){
+      alert('Lỗi 401: Mật khẩu admin không khớp với biến ADMIN_PASSWORD trên Vercel.');
+    } else {
+      let err = await res.text();
+      alert('Lỗi đồng bộ: ' + err);
+    }
+  } catch(e){
+    alert('Không thể kết nối đến máy chủ: ' + e.message);
+  }
+}
+
+function renderAuthBarOnly(){
+  let el = byId('authBar');
+  if(el) el.innerHTML = authBar();
+}
+
 function syncStartPolling(){
-  if(!syncEnabled) return;
   setInterval(()=>{
     if(document.visibilityState === 'visible') syncPull();
   }, 5000);
@@ -709,7 +755,7 @@ function fresh() {
 let store = fresh();
 try {
   let saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-  if (saved?.PA1?.people?.length===50) {
+  if (saved?.PA1?.people) {
     store = Object.assign(fresh(), saved);
     if(!store.auth) store.auth={accounts:{},firstRunDone:false};
     if(!store.log) store.log=[];
@@ -726,6 +772,15 @@ let mode='PA1', screen='overview', focusGroup='67', roundFilter='all';
 let currentUser = null;       // {username, name, role}
 let modalState = null;        // null | {type:'login'|'addRef'|'changePw'|'confirmEdit', data}
 
+// Khôi phục phiên làm việc của admin/trọng tài trong session
+try {
+  let sess = JSON.parse(sessionStorage.getItem('pkl_session'));
+  if (sess && sess.user) {
+    currentUser = sess.user;
+    syncAdminToken = sess.token || null;
+  }
+} catch(e) {}
+
 // Kênh đồng bộ thời gian thực giữa các tab/cửa sổ (BroadcastChannel + storage event)
 let syncChannel = null;
 try {
@@ -740,7 +795,7 @@ try {
 function reloadFromStorage() {
   try {
     let saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (saved?.PA1?.people?.length === 50) {
+    if (saved?.PA1?.people) {
       store = Object.assign(fresh(), saved);
       if(!store.auth) store.auth={accounts:{},firstRunDone:false};
       if(!store.log) store.log=[];
@@ -763,7 +818,7 @@ function save() {
   }
   catch(e) { alert('Không lưu được bộ nhớ trình duyệt. Hãy xuất bản sao JSON!'); }
   // Push lên Vercel KV nếu admin đã đăng nhập và sync bật
-  if (syncEnabled && syncAdminToken) syncPush();
+  if (syncAdminToken) syncPush();
 }
 function download(name, content, type) {
   let b=new Blob([content],{type:type||'application/octet-stream'}),u=URL.createObjectURL(b),a=document.createElement('a');
@@ -805,8 +860,9 @@ async function tryLogin(username, password){
   if(h!==acc.hash) return {ok:false, err:'Sai mật khẩu'};
   acc.lastLogin=Date.now();
   currentUser={username, name:acc.name, role:acc.role};
-  // Lưu token sync nếu là admin (plain password chỉ trong RAM, dùng cho header Vercel KV)
+  // Lưu token sync nếu là admin
   if(acc.role==='admin') syncAdminToken = password;
+  try { sessionStorage.setItem('pkl_session', JSON.stringify({ user: currentUser, token: syncAdminToken })); } catch(e) {}
   logAction('login','');
   save();
   return {ok:true};
@@ -817,6 +873,7 @@ function logout(){
   currentUser=null;
   syncAdminToken=null;
   modalState=null;
+  try { sessionStorage.removeItem('pkl_session'); } catch(e) {}
   render();
 }
 
@@ -1229,8 +1286,8 @@ function tab(t,label){
 
 function authBar(){
   let syncBadge = syncEnabled
-    ? `<span class="badge ok" title="Đã kết nối backend Vercel KV">☁ Live v${syncVersion}</span>`
-    : `<span class="badge" title="Chạy offline (localStorage)">◌ Offline</span>`;
+    ? `<span class="badge ok" style="cursor:pointer" onclick="syncPull()" title="Đã kết nối backend Vercel KV. Bấm để làm mới ngay">☁ Live v${syncVersion}</span>`
+    : `<span class="badge" style="cursor:pointer" onclick="syncDetect()" title="Chạy offline (localStorage). Bấm để thử kết nối lại">◌ Offline</span>`;
   if(currentUser){
     let badge=currentUser.role==='admin'?'<span class="badge">ADMIN</span>':'<span class="badge ok">TRỌNG TÀI</span>';
     return `${syncBadge} <span class="auth-chip">👤 ${esc(currentUser.name)} ${badge} <button class="auth-logout" onclick="logout()">Đăng xuất</button></span>`;
@@ -1268,6 +1325,7 @@ function render(){
     if(canEditScore()){
       let tb = `<button class="btn" onclick="backup()">Xuất bản sao JSON</button>`;
       if(isAdmin()) tb += `<button class="btn" onclick="byId('restoreFile').click()">Nạp bản sao</button>`;
+      if(isAdmin()) tb += `<button class="btn primary" onclick="forceSyncPush()" title="Đẩy toàn bộ dữ liệu lên máy chủ Vercel KV ngay lập tức">☁ Đồng bộ lên máy chủ</button>`;
       tb += `<button class="btn" onclick="window.print()">In trang</button>`;
       byId('toolbarTools').innerHTML = tb;
     } else {
@@ -1856,13 +1914,14 @@ function adminHTML(c){
   </section>
 
   <section class="panel">
-    <h2>⚙ Quản trị dữ liệu</h2>
+    <h2>⚙ Quản trị dữ liệu & Đồng bộ</h2>
     <div class="actions">
+      <button class="btn primary" onclick="forceSyncPush()">☁ Đồng bộ dữ liệu lên máy chủ ngay</button>
       <button class="btn" onclick="backup()">Xuất bản sao JSON</button>
       <button class="btn danger" onclick="resetScores()">Xoá toàn bộ điểm PA1</button>
       <button class="btn danger" onclick="resetMode()">Khôi phục danh sách ban đầu</button>
     </div>
-    <p class="help">Khuyến nghị: Xuất JSON ít nhất 1 lần/vòng để phòng mất dữ liệu nếu laptop sập.</p>
+    <p class="help">Bấm "Đồng bộ dữ liệu lên máy chủ ngay" để đẩy toàn bộ danh sách, điểm số lên Vercel KV cho tất cả người xem thấy ngay lập tức.</p>
   </section>`;
 }
 
