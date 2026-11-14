@@ -71,7 +71,7 @@ Trên máy BTC đã đăng nhập admin:
 Trên điện thoại:
 - Vào `your-app.vercel.app`
 - Console (Chrome Android: `chrome://inspect`) sẽ thấy `[SYNC] Pull v1` sau vài giây
-- Tab "Bảng đấu" → bảng A → ô 11 điểm xuất hiện
+- Tab "Bảng đấu" → bảng A → ô 15 điểm xuất hiện
 
 ## 8. Reset toàn bộ dữ liệu trên server
 

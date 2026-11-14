@@ -81,7 +81,7 @@
 @media(max-width:650px){.doc-box{padding:18px 16px}.doc-header{flex-direction:column;align-items:center;text-align:center}}
 </style></head><body>
 <header class="top"><div class="brand"><div class="logo">🏓</div><div><h1>Điều hành Pickleball v3.1 · PA1 · THCS Quang Trung</h1><small>Chào mừng Ngày Nhà giáo Việt Nam · 15/11/2026 · Đà Lạt Sport</small></div></div><span class="tag" id="authBar"></span></header>
-<div class="wrap"><div class="toolbar"><b>THỂ THỨC: PA1 · 90 TRẬN · 15 BẢNG · LUẬT TRƯỜNG (chạm 11)</b><div class="spacer"></div><span id="toolbarTools"></span><input type="file" accept=".json" id="restoreFile" hidden></div>
+<div class="wrap"><div class="toolbar"><b>THỂ THỨC: PA1 · 90 TRẬN · 15 BẢNG · LUẬT RÚT GỌN (chạm 15 là thắng, đổi sân mốc 8 điểm, ghi điểm truyền thống)</b><div class="spacer"></div><span id="toolbarTools"></span><input type="file" accept=".json" id="restoreFile" hidden></div>
 <div class="grid" id="metrics"></div><div class="notice" id="status"></div><div class="columns"><nav class="side" id="menu"></nav><main class="content" id="page"></main></div><footer class="footer">Ứng dụng HTML chạy trên máy BTC · Dữ liệu tự lưu tại trình duyệt hiện tại · Nên sao lưu JSON sau mỗi vòng.</footer></div>
 <div id="modalRoot"></div>
 <script>/*! JSZip v3.10.1 (c) 2009-2016 Stuart Knightley, MIT or GPLv3 */
@@ -1038,7 +1038,7 @@ function calc(){
     m.x=x; m.y=y;
     let s=data().scores[m.id];
     if(s&&s.x===x&&s.y===y&&validScore(s.a,s.b))
-      res[m.id]={win:s.a===11?x:y, lose:s.a===11?y:x, a:s.a, b:s.b};
+      res[m.id]={win:s.a>s.b?x:y, lose:s.a>s.b?y:x, a:s.a, b:s.b};
     else if(s&&(s.x!==x||s.y!==y))
       issues.push('Kết quả cũ '+m.id+' không còn đúng hai đội, chưa được tính.');
     matches.push(m);
@@ -1152,7 +1152,7 @@ function calc(){
 
 function validScore(a,b){
   return Number.isInteger(a) && Number.isInteger(b) && a>=0 && b>=0
-    && ((a===11&&b<=10) || (b===11&&a<=10));
+    && ((a===15&&b<=14) || (b===15&&a<=14) || (a===11&&b<=10) || (b===11&&a<=10));
 }
 
 // ─────────────────────────────────────────────
@@ -1169,16 +1169,16 @@ function scoreboard(m,c){
     </div>
     <div class="matchbody">
       <div class="team ${r&&r.win===m.x?'win':''}">${esc(teamName(m.x))}</div>
-      <input aria-label="Điểm đội 1" class="score" type="number" min="0" max="11" id="sa_${m.id}" value="${valA}" ${canEdit?'':'disabled'}>
+      <input aria-label="Điểm đội 1" class="score" type="number" min="0" max="15" id="sa_${m.id}" value="${valA}" ${canEdit?'':'disabled'}>
       <b>:</b>
-      <input aria-label="Điểm đội 2" class="score" type="number" min="0" max="11" id="sb_${m.id}" value="${valB}" ${canEdit?'':'disabled'}>
+      <input aria-label="Điểm đội 2" class="score" type="number" min="0" max="15" id="sb_${m.id}" value="${valB}" ${canEdit?'':'disabled'}>
       <div class="team ${r&&r.win===m.y?'win':''}">${esc(teamName(m.y))}</div>
       ${canEdit?`<div class="match-btns" style="display:flex;gap:4px;flex-wrap:wrap">
         <button class="btn primary" onclick="submitScore('${m.id}')">${r?'Cập nhật':'Chốt điểm'}</button>
         ${r?`<button class="btn danger" onclick="resetScore('${m.id}')" title="Xoá điểm trận này">🗑 Xoá điểm</button>`:''}
       </div>`:''}
     </div>
-    ${r?`<div class="help">Thắng: <b>${esc(teamName(r.win))}</b> · Đổi sân ở mốc 6 điểm đầu tiên.</div>`:''}
+    ${r?`<div class="help">Thắng: <b>${esc(teamName(r.win))}</b> · Đổi sân ở mốc 8 điểm đầu tiên.</div>`:''}
     ${refInfo}
   </article>`;
 }
@@ -1189,7 +1189,7 @@ function submitScore(id){
   if(!m||!m.x||!m.y) return;
   let a=Number(byId('sa_'+id).value), b=Number(byId('sb_'+id).value);
   if(byId('sa_'+id).value===''||byId('sb_'+id).value===''||!validScore(a,b)){
-    alert('Điểm không hợp lệ: đúng một đội phải đạt 11 và đội còn lại 0–10. Ví dụ 11–10.');
+    alert('Điểm không hợp lệ: đúng một đội phải đạt 15 và đội còn lại 0–14 (chạm 15 là thắng, không cần cách 2 điểm). Ví dụ 15–14.');
     return;
   }
   let previous=data().scores[id];
@@ -1416,7 +1416,7 @@ function overviewHTML(c){
   return `<section class="panel">
     <div class="flexline">
       <div><h2>${LABELS[mode]}</h2>
-      <p class="muted">Hai trình độc lập · Đánh đôi theo lớp · <b>Chạm 11 là thắng</b> (Luật trường, giản lược từ chuẩn PVAN/USAP) · Đổi sân mốc 6.</p></div>
+      <p class="muted">Hai trình độc lập · Đánh đôi theo lớp · <b>Chạm 15 là thắng</b> (Luật rút gọn, đổi sân mốc 8 điểm, ghi điểm truyền thống) · Áp dụng tất cả các vòng từ vòng bảng đến chung kết.</p></div>
       <span class="pill">15 bảng</span>
     </div>
     <div class="two">
@@ -1657,8 +1657,8 @@ function renderBoardMatrix(b, members, c, g){
     const s = data().scores[mid];
     if(!s) return {val:'–', empty:true};
     const myId = members[ia-1].id;
-    if(s.x===myId) return {val:s.a, win:s.a===11};
-    if(s.y===myId) return {val:s.b, win:s.b===11};
+    if(s.x===myId) return {val:s.a, win:s.a>s.b};
+    if(s.y===myId) return {val:s.b, win:s.b>s.a};
     return {val:'?', empty:true};
   }
 
@@ -2058,10 +2058,10 @@ function rulesHTML(c){
     <div class="doc-article">
       <h4>Điều 5. Luật kỹ thuật và cách tính điểm rút gọn</h4>
       <ol>
-        <li>Tất cả các trận từ vòng bảng đến chung kết chỉ thi đấu 01 ván duy nhất; đội đạt <b>11 điểm</b> trước là thắng (kể cả 11–10); không yêu cầu thắng cách biệt 2 điểm. Đây là quy định riêng của giải, khác luật tính điểm tiêu chuẩn quốc tế.</li>
-        <li><b>Đổi sân 01 lần</b> khi đội đầu tiên đạt 6 điểm; không đặt lại điểm hay thứ tự giao bóng. Trọng tài nhắc vận động viên và xác nhận điểm trước khi giao tiếp.</li>
-        <li>Áp dụng cách ghi điểm truyền thống: chỉ bên giao bóng được ghi điểm; thực hiện thứ tự giao bóng, chuyển quyền giao, quy tắc hai lần nảy, vùng cấm vô-lê, các lỗi giao bóng và bóng ngoài sân theo luật Pickleball kỹ thuật hiện hành, trừ phần chạm 11 đã nêu.</li>
-        <li>Trọng tài công bố điểm rõ ràng, theo dõi giao bóng, xử lý tình huống và ký xác nhận biên bản.</li>
+        <li>Tất cả các trận từ vòng bảng đến vòng chung kết chỉ thi đấu 01 ván duy nhất; đội đạt <b>15 điểm</b> trước là thắng (kể cả 15–14); không yêu cầu thắng cách biệt 2 điểm. Đây là quy định rút gọn riêng của giải, áp dụng đồng nhất ở tất cả các nội dung thi đấu từ vòng bảng đến vòng chung kết.</li>
+        <li><b>Đổi sân 01 lần</b> khi đội đầu tiên đạt <b>8 điểm</b>; không đặt lại điểm hay thứ tự giao bóng. Trọng tài nhắc vận động viên và xác nhận điểm trước khi giao bóng tiếp tục.</li>
+        <li><b>Cách ghi điểm truyền thống:</b> Chỉ bên giao bóng mới được ghi điểm; thực hiện đúng thứ tự giao bóng, chuyển quyền giao bóng, quy tắc hai lần nảy, vùng cấm vô-lê (kitchen/NVZ), các lỗi giao bóng và bóng ngoài sân theo luật Pickleball kỹ thuật hiện hành, áp dụng thể thức chạm 15 điểm là thắng như đã nêu.</li>
+        <li>Trọng tài công bố điểm rõ ràng, theo dõi lượt giao bóng, xử lý tình huống phát sinh và ký xác nhận biên bản thi đấu sau mỗi trận.</li>
       </ol>
     </div>
 
@@ -2085,7 +2085,7 @@ function rulesHTML(c){
     <div class="doc-article">
       <h4>Điều 8. Trọng tài và khiếu nại</h4>
       <ol>
-        <li>Trọng tài kiểm tra đúng đôi, đúng bảng, đúng mã trận; kiểm tra điểm và đổi sân mốc 6; ghi kết quả vào biên bản có xác nhận.</li>
+        <li>Trọng tài kiểm tra đúng đôi, đúng bảng, đúng mã trận; kiểm tra điểm và đổi sân mốc 8; ghi kết quả vào biên bản có xác nhận.</li>
         <li>Đại diện đôi thông báo khiếu nại kịp thời cho trọng tài; vấn đề vượt thẩm quyền chuyển Trọng tài trưởng/Ban tổ chức. Không tự ý thay đổi kết quả đã công bố.</li>
       </ol>
     </div>
