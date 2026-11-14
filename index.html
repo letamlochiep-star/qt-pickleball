@@ -79,6 +79,40 @@
 .doc-sign{text-align:center;min-width:180px}
 .doc-sign b{text-transform:uppercase;font-size:14px;color:var(--navy);display:block;margin-bottom:40px}
 @media(max-width:650px){.doc-box{padding:18px 16px}.doc-header{flex-direction:column;align-items:center;text-align:center}}
+/* --- Sơ đồ nhánh trực quan (Tournament Bracket Tree) --- */
+.bracket-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;padding:4px 0 14px;margin:10px 0}
+.bracket{display:grid;grid-template-columns:repeat(4,minmax(230px,1fr));gap:12px;min-width:980px;align-items:stretch}
+.bracket .col{display:flex;flex-direction:column;justify-content:space-around;gap:10px}
+.bracket .colhead{font-weight:700;color:#fff;background:#173e58;padding:7px 10px;border-radius:8px;text-align:center;font-size:12.5px;letter-spacing:.2px}
+.bracket .bcard{border:1.5px solid #087c89;border-radius:9px;padding:8px 10px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.06);transition:all .15s ease;display:flex;flex-direction:column;justify-content:space-between}
+.bracket .bcard:hover{box-shadow:0 3px 8px rgba(0,0,0,0.12);border-color:#0b6c78}
+.bracket .bcard.completed{border-color:#2a9d8f;background:#fbfefd}
+.bracket .bcard.waiting{border-style:dashed;border-color:#9bb4bf}
+.bracket .bcard .mid{font-size:11px;color:#617586;font-weight:700;display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.bracket .bcard .slot{font-weight:600;font-size:12.5px;padding:4px 6px;border-radius:6px;margin:2px 0;background:#f5f8fa;color:#183246;display:flex;justify-content:space-between;align-items:center;word-break:break-word}
+.bracket .bcard .slot.unresolved{color:#6c8293;background:#fafbfc;font-style:italic;font-weight:500}
+.bracket .bcard .slot.winner{background:#def4e6;color:#0f6b40;font-weight:700;border:1px solid #b7e3ca}
+.bracket .bcard .slot .score-val{font-weight:800;font-size:13.5px;margin-left:6px;min-width:20px;text-align:right}
+.bracket .bcard .vs-line{font-size:11px;color:#087c89;text-align:center;font-weight:700;margin:2px 0}
+.bracket .bcard .ref{font-size:11px;color:#0b6c78;border-top:1px dashed #c9dbe1;margin-top:5px;padding-top:4px;display:flex;justify-content:space-between;align-items:center}
+.bracket-boards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+.bracket-board{border:1px solid #dce5e9;border-radius:8px;padding:8px 10px;background:#fff}
+.bracket-board h4{margin:0 0 4px;font-size:13px;color:#102c43}
+.bracket-board ul{margin:0;padding-left:16px;font-size:12px;color:#334e68}
+.bracket-board li{padding:2px 0}
+.warn{color:#b73c37;font-weight:600}
+@media print{
+  .top,.toolbar,.side,.actions,.btn,.match button,.match input,.footer,#authBar,#metrics,#status,.modal-bg{display:none!important}
+  .columns{display:block!important}
+  .content{margin:0!important;padding:0!important;min-width:0!important}
+  .panel{border:0!important;padding:0!important;margin:0!important;box-shadow:none!important}
+  .bracket-wrap{overflow:visible!important}
+  .bracket{min-width:0!important;grid-template-columns:repeat(4,1fr)!important;gap:6px!important}
+  .bracket .bcard{break-inside:avoid!important;page-break-inside:avoid!important;box-shadow:none!important;border-width:1px!important;padding:4px 6px!important}
+  .bracket .bcard .slot{font-size:11px!important;padding:2px 4px!important}
+  .bracket .bcard .ref button{display:none!important}
+  body{background:#fff!important;font-size:10.5px!important}
+}
 </style></head><body>
 <header class="top"><div class="brand"><div class="logo">🏓</div><div><h1>Điều hành Pickleball v3.1 · PA1 · THCS Quang Trung</h1><small>Chào mừng Ngày Nhà giáo Việt Nam · 15/11/2026 · Đà Lạt Sport</small></div></div><span class="tag" id="authBar"></span></header>
 <div class="wrap"><div class="toolbar"><b>THỂ THỨC: PA1 · 90 TRẬN · 15 BẢNG · VÒNG BẢNG ĐẾN BÁN KẾT CHẠM 15 (MỐC 8 ĐỔI SÂN) · CHUNG KẾT 3 VÁN CHẠM 11 (MỐC 6 ĐỔI SÂN, TIME-OUT 1P, Y TẾ 5P)</b><div class="spacer"></div><span id="toolbarTools"></span><input type="file" accept=".json" id="restoreFile" hidden></div>
@@ -804,7 +838,7 @@ try {
   }
 } catch(e) {}
 
-let mode='PA1', screen='overview', focusGroup='67', roundFilter='all';
+let mode='PA1', screen='overview', focusGroup='67', roundFilter='all', bracketViewMode='tree';
 let currentUser = null;       // {username, name, role}
 let modalState = null;        // null | {type:'login'|'addRef'|'changePw'|'confirmEdit', data}
 
@@ -1228,6 +1262,53 @@ function submitScore(id){
   if(acc) acc.matchesScored=(acc.matchesScored||0)+(previous?0:1);
   logAction(previous?'edit_score':'set_score', `${id}: ${a}-${b}`, id);
   save(); render();
+}
+
+function openScoreModal(id){
+  modalState = { type: 'score', id };
+  render();
+  setTimeout(() => byId('modalSa')?.focus(), 50);
+}
+
+function submitModalScore(id){
+  if(!canEditScore()){ alert('Bạn chưa đăng nhập với quyền trọng tài.'); return; }
+  let c=calc(), m=c.matches.find(x=>x.id===id);
+  if(!m||!m.x||!m.y) return;
+  let saEl = byId('modalSa'), sbEl = byId('modalSb');
+  if(!saEl || !sbEl) return;
+  let saVal = saEl.value, sbVal = sbEl.value;
+  let a = Number(saVal), b = Number(sbVal);
+  let isFinal = m.stage === 'Chung kết' || m.id.endsWith('FINAL');
+  if(saVal==='' || sbVal==='' || !validScore(a,b,isFinal)){
+    let err = byId('modalScoreErr');
+    if(err){
+      err.style.display = 'block';
+      err.textContent = isFinal
+        ? 'Điểm chung kết không hợp lệ: 3 ván chạm 11 (nhập số ván thắng 2–0, 2–1 hoặc điểm chạm 11).'
+        : 'Điểm không hợp lệ: một đội đạt 15 và đội còn lại 0–14 (chạm 15 là thắng, không cần cách 2 điểm).';
+    }
+    return;
+  }
+  let previous=data().scores[id];
+  if(previous&&((previous.a!==a)||(previous.b!==b))){
+    let affected=analyzeCascade(id, m, a, b, c);
+    if(affected.length){
+      if(!isAdmin()){ alert(`Trận này đã có ${affected.length} trận phụ thuộc. Chỉ admin được sửa.`); return; }
+      if(!confirmCascade(id, a, b, m, affected)) return;
+    } else {
+      if(!confirm('Thay đổi tỉ số. Xác nhận cập nhật?')) return;
+    }
+  }
+  const acc = currentUser ? store.auth.accounts[currentUser.username] : null;
+  data().scores[id]={a, b, x:m.x, y:m.y,
+    refUsername: currentUser?.username||'',
+    refName: currentUser?.name||'',
+    at: Date.now()
+  };
+  if(acc) acc.matchesScored=(acc.matchesScored||0)+(previous?0:1);
+  logAction(previous?'edit_score':'set_score', `${id}: ${a}-${b}`, id);
+  save();
+  closeModal();
 }
 
 function analyzeCascade(id, m, newA, newB, c){
@@ -1889,6 +1970,105 @@ function matchesHTML(c){
 }
 
 // ─── Bracket ───
+const BRACKET_REFS = {
+  // Trình 6-7
+  '67-R16-1': 'Trần Quang Lưu', '67-R16-2': 'Thầy Hùng', '67-R16-3': 'Lê Tâm', '67-R16-4': 'Trần Quang Lưu',
+  '67-R16-5': 'Trần Quang Lưu', '67-R16-6': 'Thầy Hùng', '67-R16-7': 'Lê Tâm', '67-R16-8': 'Trần Quang Lưu',
+  '67-QF-1': 'Trần Đức Nhân', '67-QF-2': 'Trần Quang Lưu', '67-QF-3': 'Thầy Hùng', '67-QF-4': 'Lê Tâm',
+  '67-SF-1': 'Trần Quang Lưu', '67-SF-2': 'Trần Quang Lưu', '67-FINAL': 'Thầy Hùng',
+  // Trình 8-9
+  '89-R16-1': 'Lê Tâm', '89-R16-2': 'Trần Quang Lưu', '89-R16-3': 'Trần Đức Nhân', '89-R16-4': 'Trần Quang Lưu',
+  '89-R16-5': 'Thầy Hùng', '89-R16-6': 'Lê Tâm', '89-R16-7': 'Trần Quang Lưu', '89-R16-8': 'Trần Quang Lưu',
+  '89-QF-1': 'Thầy Hùng', '89-QF-2': 'Lê Tâm', '89-QF-3': 'Trần Quang Lưu', '89-QF-4': 'Trần Đức Nhân',
+  '89-SF-1': 'Thầy Hùng', '89-SF-2': 'Lê Tâm', '89-FINAL': 'Trần Quang Lưu'
+};
+
+const BRACKET_SLOTS = {
+  // Trình 6-7
+  '67-R16-1': ['Nhất bảng A', 'Nhì bảng G'],
+  '67-R16-2': ['Nhất bảng D', 'Nhì bảng E'],
+  '67-R16-3': ['Nhất bảng B', 'Nhì bảng F'],
+  '67-R16-4': ['Nhất bảng C', 'Hạng ba tốt nhất #2'],
+  '67-R16-5': ['Nhất bảng E', 'Nhì bảng D'],
+  '67-R16-6': ['Hạng ba tốt nhất #1', 'Nhì bảng A'],
+  '67-R16-7': ['Nhất bảng F', 'Nhì bảng B'],
+  '67-R16-8': ['Nhất bảng G', 'Nhì bảng C'],
+  '67-QF-1': ['Thắng 67-R16-1', 'Thắng 67-R16-2'],
+  '67-QF-2': ['Thắng 67-R16-3', 'Thắng 67-R16-4'],
+  '67-QF-3': ['Thắng 67-R16-5', 'Thắng 67-R16-6'],
+  '67-QF-4': ['Thắng 67-R16-7', 'Thắng 67-R16-8'],
+  '67-SF-1': ['Thắng 67-QF-1', 'Thắng 67-QF-2'],
+  '67-SF-2': ['Thắng 67-QF-3', 'Thắng 67-QF-4'],
+  '67-FINAL': ['Thắng 67-SF-1', 'Thắng 67-SF-2'],
+  // Trình 8-9
+  '89-R16-1': ['Nhất bảng A', 'Nhì bảng H'],
+  '89-R16-2': ['Nhất bảng D', 'Nhì bảng E'],
+  '89-R16-3': ['Nhất bảng B', 'Nhì bảng G'],
+  '89-R16-4': ['Nhất bảng C', 'Nhì bảng F'],
+  '89-R16-5': ['Nhất bảng E', 'Nhì bảng D'],
+  '89-R16-6': ['Nhất bảng H', 'Nhì bảng A'],
+  '89-R16-7': ['Nhất bảng F', 'Nhì bảng C'],
+  '89-R16-8': ['Nhất bảng G', 'Nhì bảng B'],
+  '89-QF-1': ['Thắng 89-R16-1', 'Thắng 89-R16-2'],
+  '89-QF-2': ['Thắng 89-R16-3', 'Thắng 89-R16-4'],
+  '89-QF-3': ['Thắng 89-R16-5', 'Thắng 89-R16-6'],
+  '89-QF-4': ['Thắng 89-R16-7', 'Thắng 89-R16-8'],
+  '89-SF-1': ['Thắng 89-QF-1', 'Thắng 89-QF-2'],
+  '89-SF-2': ['Thắng 89-QF-3', 'Thắng 89-QF-4'],
+  '89-FINAL': ['Thắng 89-SF-1', 'Thắng 89-SF-2']
+};
+
+function renderBracketCard(m, c){
+  let r = c.res[m.id], s = data().scores[m.id];
+  let isReady = !!m.x && !!m.y;
+  let slots = BRACKET_SLOTS[m.id] || ['Đội 1', 'Đội 2'];
+  let defRef = BRACKET_REFS[m.id] || 'Ban tổ chức';
+  let refTxt = s?.refName ? `TT: ${esc(s.refName)} (chốt)` : `TT: ${defRef}`;
+
+  let slotA_name = m.x ? esc(teamName(m.x)) : esc(slots[0]);
+  let isWinA = r && r.win === m.x;
+  let scoreA = r ? `<span class="score-val">${r.a}</span>` : '';
+
+  let slotB_name = m.y ? esc(teamName(m.y)) : esc(slots[1]);
+  let isWinB = r && r.win === m.y;
+  let scoreB = r ? `<span class="score-val">${r.b}</span>` : '';
+
+  let cardClass = r ? 'bcard completed' : (isReady ? 'bcard ready' : 'bcard waiting');
+  let canEdit = canEditScore() && isReady;
+
+  return `<div class="${cardClass}">
+    <div class="mid">
+      <span><strong>${esc(m.id)}</strong></span>
+      <span class="pill ${r?'':'gray'}" style="font-size:10px">${r?'✓ '+r.a+'–'+r.b:(isReady?'Chờ đấu':'Chờ kết quả')}</span>
+    </div>
+    <div class="slot ${m.x?'':'unresolved'} ${isWinA?'winner':''}">
+      <span style="overflow:hidden;text-overflow:ellipsis">${slotA_name}</span>
+      ${scoreA}
+    </div>
+    <div class="vs-line">${r ? (r.a + ' : ' + r.b) : 'vs'}</div>
+    <div class="slot ${m.y?'':'unresolved'} ${isWinB?'winner':''}">
+      <span style="overflow:hidden;text-overflow:ellipsis">${slotB_name}</span>
+      ${scoreB}
+    </div>
+    <div class="ref">
+      <span>${refTxt}</span>
+      ${canEdit ? `<button class="btn primary" style="padding:2px 8px;font-size:10.5px;border-radius:6px" onclick="openScoreModal('${m.id}')">${r?'Sửa':'Nhập'}</button>` : ''}
+    </div>
+  </div>`;
+}
+
+function renderBracketBoards(g){
+  let boards = getBoards(g);
+  return Object.entries(boards).map(([b, arr]) => {
+    return `<div class="bracket-board">
+      <h4>Bảng ${b} <small>(${arr.length} đôi)</small></h4>
+      <ul>
+        ${arr.map(p => `<li><b>${p.id}</b> · ${p.className} · ${esc(p.p1)} / ${esc(p.p2)}${p.note ? ` <span class="warn">⚠ ${esc(p.note)}</span>` : ''}</li>`).join('')}
+      </ul>
+    </div>`;
+  }).join('');
+}
+
 function bracketHTML(c){
   let rows=c.matches.filter(m=>m.g===focusGroup&&!m.board);
   let warnings=[];
@@ -1899,15 +2079,82 @@ function bracketHTML(c){
       if(tA && tZ && tA.board===tZ.board) warnings.push(`${m.id}: ${m.x} vs ${m.y} — cùng bảng ${tA.board}`);
     }
   }
+
+  let r16 = rows.filter(m => m.stage === 'Vòng 1/8');
+  let qf = rows.filter(m => m.stage === 'Tứ kết');
+  let sf = rows.filter(m => m.stage === 'Bán kết');
+  let fin = rows.filter(m => m.stage === 'Chung kết');
+
+  let treeHTML = `
+    <div class="bracket-wrap">
+      <div class="bracket">
+        <div class="col">
+          <div class="colhead">Vòng 1/8 · 8 trận · 1 ván chạm 15</div>
+          ${r16.map(m => renderBracketCard(m, c)).join('')}
+        </div>
+        <div class="col">
+          <div class="colhead">Tứ kết · 4 trận · 1 ván chạm 15</div>
+          ${qf.map(m => renderBracketCard(m, c)).join('')}
+        </div>
+        <div class="col">
+          <div class="colhead">Bán kết · 2 trận · 1 ván chạm 15</div>
+          ${sf.map(m => renderBracketCard(m, c)).join('')}
+        </div>
+        <div class="col">
+          <div class="colhead">Chung kết · 3 ván chạm 11</div>
+          ${fin.map(m => renderBracketCard(m, c)).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+
+  let listHTML = ['Vòng 1/8','Tứ kết','Bán kết','Chung kết'].map(stage => `
+    <h3 style="margin-top:18px">${stage}</h3>
+    ${rows.filter(m => m.stage === stage).map(m => scoreboard(m, c)).join('')}
+  `).join('');
+
   return `<section class="panel">
-    <div class="flexline"><h2>Nhánh loại trực tiếp</h2>
-      <div class="seg">
-        <button type="button" data-switch-group="67" aria-pressed="${focusGroup==='67'?'true':'false'}" ${focusGroup==='67'?'class="active"':''}>Trình 6–7</button>
-        <button type="button" data-switch-group="89" aria-pressed="${focusGroup==='89'?'true':'false'}" ${focusGroup==='89'?'class="active"':''}>Trình 8–9</button>
-      </div></div>
-    <p class="help">Nhánh công bố: khi chốt trận trước, hai đội tiếp theo xuất hiện tự động. Đổi đội thắng → các trận phụ thuộc bị khoá đến khi trọng tài xác nhận lại.</p>
-    ${warnings.length?`<div class="warn-line"><b>⚠ Có ${warnings.length} cặp cùng bảng trong vòng 1/8:</b><br>${warnings.join('<br>')}</div>`:''}
-    ${!c.ready?'<div class="notice warn">Chưa phân bảng đầy đủ.</div>':(['Vòng 1/8','Tứ kết','Bán kết','Chung kết'].map(stage=>`<h3 style="margin-top:18px">${stage}</h3>${rows.filter(m=>m.stage===stage).map(m=>scoreboard(m,c)).join('')}`).join(''))}
+    <div class="flexline">
+      <div>
+        <h2>Sơ đồ nhánh thi đấu đến Chung kết — ${groupName(focusGroup)}</h2>
+        <div class="help">Tự động kết nối nhánh: đội thắng trận trước sẽ tự động tiến vào ô tương ứng ở vòng sau.</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <div class="seg">
+          <button type="button" data-switch-group="67" aria-pressed="${focusGroup==='67'?'true':'false'}" ${focusGroup==='67'?'class="active"':''}>Trình 6–7</button>
+          <button type="button" data-switch-group="89" aria-pressed="${focusGroup==='89'?'true':'false'}" ${focusGroup==='89'?'class="active"':''}>Trình 8–9</button>
+        </div>
+        <div class="seg">
+          <button type="button" class="${bracketViewMode==='tree'?'active':''}" onclick="bracketViewMode='tree';render()">🌲 Sơ đồ cây</button>
+          <button type="button" class="${bracketViewMode==='list'?'active':''}" onclick="bracketViewMode='list';render()">☰ Danh sách</button>
+        </div>
+        <button class="btn" onclick="window.print()" title="In sơ đồ nhánh ra giấy hoặc PDF">🖨 In sơ đồ</button>
+      </div>
+    </div>
+
+    <div class="rule" style="background:#def4f4;padding:8px 12px;border-radius:8px;margin:12px 0 8px;font-size:13px;border-left:4px solid #087c89">
+      <b>Thể thức:</b> Vòng 1/8 → Bán kết: 1 ván chạm 15 (8 điểm đổi sân) · <b>Chung kết:</b> 3 ván chạm 11 (thắng 2 ván, 6 điểm đổi sân, time out 1 phút/ván, time out y tế 5 phút).
+    </div>
+
+    <details style="margin:10px 0 14px;background:#f8fbfc;border:1px solid #dce5e9;border-radius:10px;padding:8px 12px">
+      <summary style="font-weight:700;color:var(--navy);font-size:13.5px;cursor:pointer">
+        📋 1. Các bảng vòng loại (vòng tròn 1 lượt) — Bấm để xem danh sách đôi từng bảng
+      </summary>
+      <div class="bracket-boards" style="margin-top:10px">
+        ${renderBracketBoards(focusGroup)}
+      </div>
+    </details>
+
+    <h3 style="margin:16px 0 4px;font-size:15px;color:var(--navy2)">2. Sơ đồ nhánh đến chung kết</h3>
+    <p class="help" style="margin-top:2px">Đội cụ thể ở mỗi ô sẽ được tự động điền sau khi có kết quả vòng bảng. Trọng tài có thể bấm "Nhập" để ghi điểm trực tiếp.</p>
+
+    ${warnings.length ? `<div class="warn-line"><b>⚠ Có ${warnings.length} cặp cùng bảng trong vòng 1/8:</b><br>${warnings.join('<br>')}</div>` : ''}
+
+    ${!c.ready ? '<div class="notice warn">Chưa phân bảng đầy đủ.</div>' : (bracketViewMode === 'tree' ? treeHTML : listHTML)}
+
+    <div class="help" style="margin-top:14px;border-top:1px dashed #dce5e9;padding-top:8px">
+      * <b>Ghi chú:</b> Mục "TT" là trọng tài dự kiến phân công theo lịch của Ban tổ chức. Khi trận đấu kết thúc, hệ thống sẽ hiển thị tên trọng tài đã chốt điểm thực tế.
+    </div>
   </section>`;
 }
 
@@ -2188,6 +2435,44 @@ function modalHTML(){
       <div class="actions">
         <button class="btn" onclick="closeModal()">Huỷ</button>
         <button class="btn primary" onclick="submitChangePw()">Lưu mật khẩu mới</button>
+      </div>
+    </div></div>`;
+  }
+  if(modalState.type==='score'){
+    let c = calc(), m = c.matches.find(x => x.id === modalState.id);
+    if(!m) return '';
+    let r = c.res[m.id], s = data().scores[m.id];
+    let valA = r ? r.a : (s ? s.a : '');
+    let valB = r ? r.b : (s ? s.b : '');
+    let isFinal = m.stage === 'Chung kết' || m.id.endsWith('FINAL');
+    return `<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:440px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <h3 style="margin:0">${esc(m.id)} · ${esc(m.stage)}</h3>
+        <span class="pill ${r?'':'gray'}">${r?'✓ Đã chốt':'Chưa đấu'}</span>
+      </div>
+      <p class="help" style="margin:0 0 12px">
+        ${isFinal ? '★ Chung kết 3 ván chạm 11 (6đ đổi sân) · Time out 1p/ván · Y tế 5p' : 'Luật rút gọn: 1 ván chạm 15 (8đ đổi sân)'}
+      </p>
+      <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;margin:16px 0">
+        <div style="text-align:center">
+          <div style="font-weight:700;font-size:12.5px;margin-bottom:6px;min-height:34px;display:flex;align-items:center;justify-content:center">${esc(teamName(m.x))}</div>
+          <input id="modalSa" type="number" min="0" max="15" value="${valA}" style="font-size:22px;font-weight:800;text-align:center;width:100%;padding:8px" onkeydown="if(event.key==='Enter')submitModalScore('${m.id}')">
+        </div>
+        <div style="font-size:20px;font-weight:800;color:var(--navy);margin-top:28px">:</div>
+        <div style="text-align:center">
+          <div style="font-weight:700;font-size:12.5px;margin-bottom:6px;min-height:34px;display:flex;align-items:center;justify-content:center">${esc(teamName(m.y))}</div>
+          <input id="modalSb" type="number" min="0" max="15" value="${valB}" style="font-size:22px;font-weight:800;text-align:center;width:100%;padding:8px" onkeydown="if(event.key==='Enter')submitModalScore('${m.id}')">
+        </div>
+      </div>
+      <div id="modalScoreErr" class="err-line" style="display:none;margin-top:8px"></div>
+      <div class="actions" style="margin-top:16px;display:flex;justify-content:space-between">
+        <div>
+          ${r ? `<button class="btn danger" onclick="resetScore('${m.id}');closeModal()">🗑 Xoá điểm</button>` : ''}
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn" onclick="closeModal()">Đóng</button>
+          <button class="btn primary" onclick="submitModalScore('${m.id}')">${r?'Cập nhật':'Chốt điểm'}</button>
+        </div>
       </div>
     </div></div>`;
   }
